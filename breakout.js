@@ -1,15 +1,65 @@
-player = {};
-keysDown = {}
+var player, ball;
+var keysDown = {};
 
-ball = {
-    x:95,
-    y:105,
-    width: 3,
-    height: 3,
-    color: 'white',
-    xSpeed: 1,
-    ySpeed: -1
+function Ball() {
+    this.x = 95;
+    this.y = 105;
+    this.width = 3;
+    this.height = 3;
+    this.color = 'white';
+    this.xSpeed = 1;
+    this.ySpeed = -1;
+    this.rightSide = this.x + this.width;
+    this.bottomSide = this.y + this.height;
 }
+
+Ball.prototype.collides = function(o) {
+    let newPos = {
+        x: this.x + this.xSpeed,
+        y: this.y + this.ySpeed,
+        rightSide: this.x + this.xSpeed + this.width,
+        bottomSide: this.y + this.ySpeed + this.height
+    }
+
+    if((newPos.x > o.rightSide)  || (newPos.rightSide < o.x) || 
+       (newPos.y > o.bottomSide) || (newPos.bottomSide < o.y)) return false;
+
+    // Collision from the left
+    if(this.rightSide <= o.x) {
+        this.xSpeed *= -1;
+        return true; 
+     }
+ 
+     // Collision from the right
+     if(this.x >= o.rightSide) {
+        this.xSpeed *= -1;
+        return true; 
+     }
+ 
+     // Collision from the top
+     if(this.bottomSide <= o.y) {
+        this.ySpeed *= -1;
+        return true; 
+     }
+ 
+     // Collision from the bottom
+     if(this.y >= o.bottomSide) {
+        this.ySpeed *= -1;
+        return true; 
+     }
+  }
+
+function Player() {
+    this.color ="orange";
+    this.x = 90;
+    this.y = 110;
+    this.speed = 2;
+    this.width = 16;
+    this.height = 3;
+    this.rightSide = this.x + this.width;
+    this.bottomSide = this.y + this.height;
+}
+
 
 game = {
     width: 193,
@@ -20,7 +70,8 @@ game = {
     brickWidth: 12,
     brickHeight: 3
 }
-gameStarted = false;
+gameLoopRunning = false;
+gameOver = false;
 bricks = [];
 rightEdge = 0;
 brickBottomEdge = 0;
@@ -31,6 +82,8 @@ function Brick(color, x, y) {
     this.y = y;
     this.width = game.brickWidth;
     this.height = game.brickHeight;
+    this.rightSide = this.x + game.brickWidth;
+    this.bottomSide = this.y + game.brickHeight;
 }
 
 function setBricks() {
@@ -42,14 +95,6 @@ function setBricks() {
         }
     }
     brickBottomEdge = bricks.slice(-1)[0].y + game.brickHeight + 5;
-}
-
-function collides(a, b) {
-    if(a.x > b.x + b.width)  return false;
-    if(a.x + a.width < b.x)  return false;
-    if(a.y > b.y + b.height) return false;
-    if(a.y + a.height < b.y) return false;
-    return true;
 }
 
 function collisionChecks(){
@@ -65,23 +110,20 @@ function collisionChecks(){
         return
     }
 
-    if (collides(ball, player)) {
-        ball.ySpeed *= -1;
+    if (ball.collides(player)) {
         // TODO: Handle side collisions
         return;
     }
 
     for (let i = 0; i < bricks.length; i++) {
         let brick = bricks [i];
-        if (collides (ball, brick)) {
+        if (ball.collides(brick)) {
             bricks.splice(i, 1);
-            ball.ySpeed *= -1;
             game.score += 5;
             drawScore();
             return;
         }
     }
-
 }
 
 function setRightEdge(val) {
@@ -92,10 +134,20 @@ cnv.width = game.width * game.cellSize;
 cnv.height = game.height * game.cellSize;
 ctx = cnv.getContext('2d');
 
+function pause() {
+    gameLoopRunning = false;
+}
+
 function gameLoop() {
-    if (gameStarted) requestAnimationFrame (gameLoop);
-    if (keysDown["ArrowLeft"])  player.x -= player.speed;
-    if (keysDown["ArrowRight"]) player.x += player.speed;
+    if (gameLoopRunning) requestAnimationFrame (gameLoop);
+    if (keysDown["ArrowLeft"]) {
+        player.x -= player.speed;
+        player.rightSide = player.x + player.width;
+    }
+    if (keysDown["ArrowRight"]) {
+        player.x += player.speed;
+        player.rightSide = player.x + player.width;
+    }
     if (player.x < 0) player.x = 0;
     if(player.x > rightEdge) player.x = rightEdge;
 
@@ -103,15 +155,24 @@ function gameLoop() {
 
     ball.x += ball.xSpeed;
     ball.y += ball.ySpeed;
+    ball.rightSide = ball.x + ball.width;
+    ball.bottomSide = ball.y + ball.height;
 
     ctx.clearRect(0,0,cnv.width,cnv.height);
     drawObject(player);
     drawObject(ball);
     bricks.forEach(drawObject);
-}
 
-function gameOver() {
-    clearInterval(interval);
+    if (ball.y > game.height) {
+        gameLoopRunning = false;
+        if (game.lives > 0) {
+            game.lives--;
+            ball = new Ball();
+        } else {
+            gameOver = false;
+        }
+        drawScore();
+    }
 }
 
 function drawObject(obj) {
@@ -126,6 +187,10 @@ function drawObject(obj) {
 
 onkeydown = function(e) {
     keysDown[e.key] = true;
+    if (!gameLoopRunning && !gameOver) {
+        gameLoopRunning = true;
+        if (game.lives >= 0) gameLoop();
+    }
 }
 
 onkeyup = function(e) {
@@ -134,26 +199,24 @@ onkeyup = function(e) {
 
 function drawScore() {
     score.innerText = "Score: " + game.score;
+    lives.innerText = "Lives: " + game.lives;
 }
 
 function gameStart() {
-    if (gameStarted) return;
-    gameStarted = true;
+    gameOver = false;
+    ball = new Ball();
     tail = [];
     snakeLength = 3;
     game.score = 0;
-    player = {
-        color:"orange",
-        x: 90,
-        y: 110,
-        speed: 2,
-        width: 12,
-        height: 3
-    }
+    game.lives = 2;
+    player = new Player();
     setRightEdge(game.width - player.width);
     drawScore();
     keepGoing = true;
     setBricks();
+    if (gameLoopRunning) return;
+
+    gameLoopRunning = true;
     gameLoop();
 }
 
