@@ -1,4 +1,4 @@
-var player, ball, ball2;
+var player, balls;
 var keysDown = {};
 
 const cr = Math.PI * 2;
@@ -16,7 +16,6 @@ function Ball(obj) {
     this.ySpeed = 0;
     this.rightSide = this.x + this.width;
     this.bottomSide = this.y + this.height;
-    this.bricksHit = 0;
     this.flipY();
 }
 
@@ -92,6 +91,7 @@ function Game() {
     this.brickWidth = 12;
     this.brickHeight = 3;
     this.lives = 2;
+    this.bricksHit = 0;
 }
 
 game = new Game();
@@ -120,7 +120,18 @@ function setBricks() {
             bricks.push(new Brick(colors[row], col * game.brickWidth + .5, (row + 3) * game.brickHeight));
         }
     }
+    makePowerUp(getRandom(0, 15), getRandom(6, 7));
+    makePowerUp(getRandom(0, 15), getRandom(6, 7));
     brickBottomEdge = bricks.slice(-1)[0].y + game.brickHeight + 5;
+}
+
+function makePowerUp(x, y) {
+    brick = bricks[y * 16 + x];
+    brick.powerup = true;
+}
+
+function getRandom(start, end) {
+    return start + parseInt(Math.random() * (end - start + 1))
 }
 
 function collisionChecks(obj){
@@ -151,9 +162,12 @@ function collisionChecks(obj){
     for (let i = 0; i < bricks.length; i++) {
         let brick = bricks [i];
         if (obj.collides(brick)) {
+            if (brick.powerup) {
+                addPowerupBall();
+            }
             bricks.splice(i, 1);
             game.score += 5;
-            obj.bricksHit++;
+            game.bricksHit++;
             checkSpeedup();
             drawScore();
             return;
@@ -166,9 +180,9 @@ function checkSpeedup() {
 Speedup after 4 hits, 12, and first orange & red
 Paddle size halves after hitting top of screen
 */
-    if (ball.bricksHit == 4 || ball.bricksHit == 12) {
-        ball.speed += .5;
-        ball.angleToPos();
+    if (game.bricksHit == 4 || game.bricksHit == 12) {
+        balls[0].speed += .5;
+        balls[0].angleToPos();
     }
 }
 
@@ -193,10 +207,6 @@ function move(obj) {
 
 function gameLoop() {
     if (gameLoopRunning) requestAnimationFrame (gameLoop);
-    ballAngle.innerText = "angle: " + (ball.angle / cr * 360);
-    ballSpeed.innerText = "speed: " + ball.speed;
-    ballXSpeed.innerText = "x speed: " + ball.xSpeed;
-    ballYSpeed.innerText = "y speed: " + ball.ySpeed;
     if (keysDown["ArrowLeft"]) {
         player.x -= player.speed;
         player.rightSide = player.x + player.width;
@@ -208,27 +218,34 @@ function gameLoop() {
     if (player.x < 0) player.x = 0;
     if(player.x > rightEdge) player.x = rightEdge;
 
-    collisionChecks(ball);
-    collisionChecks(ball2);
-    
-    move(ball);
-    move(ball2);
+    balls.forEach(collisionChecks);
+    balls.forEach(move);
 
     ctx.clearRect(0,0,cnv.width,cnv.height);
     drawObject(player);
-    drawObject(ball);
-    drawObject(ball2);
+    balls.forEach(drawObject);
     bricks.forEach(drawObject);
 
-    if (ball.y > game.height) {
+    balls.forEach(checkLostBall);
+    balls = balls.filter(ball => !ball.lost );
+
+    if (balls.length == 0) {
         gameLoopRunning = false;
         if (game.lives > 0) {
             game.lives--;
-            ball = new Ball();
+            game.bricksHit = 0;
+            balls = [new Ball()];
         } else {
             gameOver = false;
         }
         drawScore();
+    }
+}
+
+function checkLostBall(ball) {
+    if (ball.y > game.height) {
+        ball.lost = true;
+        balls.forEach(b => b.speed += .5);
     }
 }
 
@@ -240,6 +257,16 @@ function drawObject(obj) {
         obj.width * game.cellSize - game.padding,
         obj.height * game.cellSize - game.padding
     );
+    if (obj.powerup) {
+        ctx.strokeStyle = '#5555ff';
+        ctx.lineWidth = 4;
+        ctx.strokeRect(
+            obj.x * game.cellSize,
+            obj.y * game.cellSize,
+            obj.width * game.cellSize - game.padding,
+            obj.height * game.cellSize - game.padding + 1
+        );
+    }
 }
 
 onkeydown = function(e) {
@@ -259,11 +286,14 @@ function drawScore() {
     lives.innerText = "Lives: " + game.lives;
 }
 
+function addPowerupBall() {
+    balls.push(new Ball({x: 80, y : 90, width: 6, height: 6, speed: .75}));
+}
+
 function gameStart() {
     game = new Game();
     gameOver = false;
-    ball = new Ball();
-    ball2 = new Ball({x: 80, y : 90, width: 6, height: 6, speed: .75});
+    balls = [new Ball()];
     tail = [];
     snakeLength = 3;
     player = new Player();
